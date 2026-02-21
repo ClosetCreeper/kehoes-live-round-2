@@ -43,14 +43,16 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
   const [options, setOptions] = useState<OptionRow[]>([]);
   const [counts, setCounts] = useState<Map<string, number>>(new Map());
 
-  // QR origin (works on Vercel previews + prod)
+  // QR origin
   const [origin, setOrigin] = useState<string>("");
   useEffect(() => setOrigin(window.location.origin), []);
   const voteUrl = origin ? `${origin}/vote/${encodeURIComponent(code)}` : "";
 
-  // Posters
   const posters = POSTERS;
+
+  // Poster state
   const [posterIdx, setPosterIdx] = useState(0);
+  const [posterSrc, setPosterSrc] = useState<string>(posters?.length ? `/posters/${posters[0]}` : "");
   const [posterVisible, setPosterVisible] = useState(true);
 
   const totalVotes = useMemo(() => {
@@ -77,22 +79,28 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
     setCounts(c);
   }
 
-  // ✅ Poster cycle every 5s: fade out -> switch while hidden -> fade in new poster
+  // Keep posterSrc in sync with posterIdx
+  useEffect(() => {
+    if (!posters?.length) return;
+    setPosterSrc(`/posters/${posters[posterIdx]}`);
+  }, [posterIdx, posters]);
+
+  // ✅ Poster cycle: fade out -> swap src while hidden -> fade in
   useEffect(() => {
     if (!posters || posters.length <= 1) return;
 
     const interval = setInterval(() => {
       setPosterVisible(false);
 
-      // after fade-out completes, switch poster
+      // Wait for fade-out to finish (matches duration-300)
       setTimeout(() => {
         setPosterIdx((i) => (i + 1) % posters.length);
       }, 320);
 
-      // small extra delay to ensure the new src is mounted BEFORE fade-in
+      // Fade back in AFTER src has changed
       setTimeout(() => {
         setPosterVisible(true);
-      }, 380);
+      }, 420);
     }, 5000);
 
     return () => clearInterval(interval);
@@ -122,12 +130,10 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
-  const currentPoster = posters?.length ? `/posters/${posters[posterIdx]}` : null;
-
   return (
     <main className="h-screen overflow-hidden vote-bg text-white px-8 py-6">
       <div className="h-full max-w-6xl mx-auto flex flex-col">
-        {/* Header: Logo centered + QR at top-right */}
+        {/* Header: Logo centered + QR top-right */}
         <div className="relative flex items-center justify-center pb-4">
           <Image
             src="/title.png"
@@ -138,7 +144,6 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
             className="w-[min(900px,85vw)] h-auto max-h-[16vh] object-contain"
           />
 
-          {/* QR block */}
           <div className="absolute right-0 top-1/2 -translate-y-1/2">
             <div
               className="rounded-xl p-2"
@@ -148,27 +153,19 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
                 boxShadow: "0 0 18px rgba(212,175,55,0.25)",
               }}
             >
-              {voteUrl ? (
-                <QRCode
-                  value={voteUrl}
-                  size={120}
-                  fgColor="#000000"
-                  bgColor="#FFFFFF"
-                />
-              ) : null}
+              {voteUrl ? <QRCode value={voteUrl} size={120} fgColor="#000000" bgColor="#FFFFFF" /> : null}
             </div>
           </div>
         </div>
 
         {/* Body */}
         <div className="flex-1 grid grid-cols-12 gap-6 min-h-0">
-          {/* LEFT: Poster only */}
+          {/* LEFT: Poster */}
           <div className="col-span-4 rounded-2xl bg-gold-inner p-6 flex flex-col min-h-0">
             <div className="relative w-full rounded-xl overflow-hidden bg-black/40 border border-white/10 aspect-[2/3]">
-              {currentPoster ? (
+              {posterSrc ? (
                 <Image
-                  key={currentPoster} // ✅ forces Next/Image to swap cleanly
-                  src={currentPoster}
+                  src={posterSrc}
                   alt="Movie poster"
                   fill
                   sizes="(max-width: 1024px) 30vw, 25vw"
