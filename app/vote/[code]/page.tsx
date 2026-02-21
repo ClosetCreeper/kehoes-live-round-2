@@ -34,8 +34,10 @@ export default function VotePage({ params }: { params: { code: string } }) {
     setStatus("");
     const s = await fetchSessionByCode(code);
     setSession(s);
+
     const o = await fetchOptions(s.id);
     setOptions(o);
+
     const c = await fetchVoteCounts(s.id);
     setCounts(c);
   }
@@ -43,12 +45,17 @@ export default function VotePage({ params }: { params: { code: string } }) {
   useEffect(() => {
     load();
 
+    // Live updates while voting happens
     const channel = supabase
       .channel(`votes-${code}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "votes" }, async () => {
-        const s = await fetchSessionByCode(code);
-        const c = await fetchVoteCounts(s.id);
-        setCounts(c);
+        try {
+          const s = await fetchSessionByCode(code);
+          const c = await fetchVoteCounts(s.id);
+          setCounts(c);
+        } catch {
+          // Ignore transient errors; the page still works.
+        }
       })
       .subscribe();
 
@@ -60,6 +67,7 @@ export default function VotePage({ params }: { params: { code: string } }) {
 
   async function castVote(optionId: string) {
     if (!session) return;
+
     if (!session.is_open) {
       setStatus("Voting is closed.");
       return;
@@ -70,13 +78,13 @@ export default function VotePage({ params }: { params: { code: string } }) {
 
     const deviceId = getDeviceId();
 
-    // Allow changing vote by deleting prior vote for device+session, then inserting.
+    // Allow re-voting by deleting prior vote for device+session, then inserting.
     await supabase.from("votes").delete().eq("session_id", session.id).eq("device_id", deviceId);
 
     const { error } = await supabase.from("votes").insert({
       session_id: session.id,
       option_id: optionId,
-      device_id: deviceId
+      device_id: deviceId,
     });
 
     if (error) {
@@ -88,27 +96,29 @@ export default function VotePage({ params }: { params: { code: string } }) {
   }
 
   return (
-    <main className="min-h-screen flex items-start justify-center px-6 py-14 vote-bg">
-      <div className="w-full max-w-4xl flex flex-col items-center gap-8">
-        <div className="w-full flex flex-col items-center gap-2">
+    <main className="h-screen overflow-hidden flex items-center justify-center px-6 py-6 vote-bg">
+      <div className="w-full max-w-4xl h-full flex flex-col items-center justify-center gap-5">
+        {/* Title image (you provide) */}
+        <div className="w-full flex flex-col items-center justify-center">
           <Image
             src="/title.png"
             alt="Kehoes Voting Title"
             width={900}
             height={220}
             priority
-            className="w-[min(900px,100%)] h-auto"
+            className="w-[min(820px,90vw)] h-auto max-h-[18vh] object-contain"
           />
         </div>
 
-        <div className="w-full max-w-xl rounded-2xl bg-gold-card p-8 shadow-2xl">
+        {/* Voting Card */}
+        <div className="w-full max-w-xl rounded-2xl bg-gold-card p-6 shadow-2xl">
           <div className="text-white text-3xl md:text-4xl font-extrabold leading-tight">
             THE KEHOE&apos;S ACADEMY
             <br />
             VOTING ROUND 2
           </div>
 
-          <div className="mt-8 rounded-2xl bg-gold-inner p-6 flex flex-col gap-4">
+          <div className="mt-6 rounded-2xl bg-gold-inner p-4 flex flex-col gap-3">
             {options.map((opt) => {
               const pct = percentFor(opt.id);
               const isSelected = selected === opt.id;
@@ -118,9 +128,9 @@ export default function VotePage({ params }: { params: { code: string } }) {
                   key={opt.id}
                   onClick={() => castVote(opt.id)}
                   className={[
-                    "w-full rounded-xl px-6 py-6 flex items-center justify-between",
+                    "w-full rounded-xl px-6 py-5 flex items-center justify-between",
                     "transition transform active:scale-[0.99]",
-                    isSelected ? "bg-dark-card text-white" : "bg-light-card text-white/95"
+                    isSelected ? "bg-dark-card text-white" : "bg-light-card text-white/95",
                   ].join(" ")}
                 >
                   <span className="text-lg md:text-xl font-semibold">{opt.name}</span>
@@ -129,8 +139,9 @@ export default function VotePage({ params }: { params: { code: string } }) {
               );
             })}
 
-            <div className="pt-2 text-center text-white/80 text-sm">
-              {status || (session?.is_open ? "" : "Voting is closed.")}
+            {/* Only show messages we explicitly set */}
+            <div className="pt-1 text-center text-white/80 text-sm min-h-[20px]">
+              {status}
             </div>
           </div>
         </div>
