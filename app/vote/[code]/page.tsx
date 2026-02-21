@@ -99,9 +99,6 @@ export default function VotePage({ params }: { params: { code: string } }) {
             priority
             className="w-[min(900px,100%)] h-auto"
           />
-          <div className="text-gold/80 text-xl md:text-2xl font-medium tracking-wide">
-            Second Round Voting
-          </div>
         </div>
 
         <div className="w-full max-w-xl rounded-2xl bg-gold-card p-8 shadow-2xl">
