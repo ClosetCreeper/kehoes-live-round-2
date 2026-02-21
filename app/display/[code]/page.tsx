@@ -11,24 +11,9 @@ type OptionRow = { id: string; name: string; sort: number };
 type SessionRow = { id: string; code: string; title: string | null; is_open: boolean };
 
 // Elegant gold palette (auto-cycles)
-const GOLD_COLORS = [
-  "#E7C873",
-  "#D4AF37",
-  "#C5A028",
-  "#B8961E",
-  "#9F7F14",
-  "#F0D98A",
-];
+const GOLD_COLORS = ["#E7C873", "#D4AF37", "#C5A028", "#B8961E", "#9F7F14", "#F0D98A"];
 
-function renderSliceLabel({
-  cx,
-  cy,
-  midAngle,
-  innerRadius,
-  outerRadius,
-  value,
-}: any) {
-  // Only show labels for non-zero slices
+function renderSliceLabel({ cx, cy, midAngle, innerRadius, outerRadius, value }: any) {
   if (!value || value <= 0) return null;
 
   const RADIAN = Math.PI / 180;
@@ -57,12 +42,14 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
   const [options, setOptions] = useState<OptionRow[]>([]);
   const [counts, setCounts] = useState<Map<string, number>>(new Map());
 
+  // Poster rotation
+  const [posters, setPosters] = useState<string[]>([]);
+  const [posterIdx, setPosterIdx] = useState(0);
+  const [posterVisible, setPosterVisible] = useState(true);
+
   // Bulletproof origin detection for Vercel
   const [origin, setOrigin] = useState<string>("");
-  useEffect(() => {
-    setOrigin(window.location.origin);
-  }, []);
-
+  useEffect(() => setOrigin(window.location.origin), []);
   const voteUrl = origin ? `${origin}/vote/${encodeURIComponent(code)}` : "";
 
   const totalVotes = useMemo(() => {
@@ -89,10 +76,40 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
     setCounts(c);
   }
 
+  // Load poster list from /public/posters/posters.json
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/posters/posters.json", { cache: "no-store" });
+        if (!res.ok) return;
+        const arr = (await res.json()) as string[];
+        if (Array.isArray(arr)) setPosters(arr.filter(Boolean));
+      } catch {
+        // If missing, just no posters. (You’ll add posters.json)
+      }
+    })();
+  }, []);
+
+  // Poster cycle every 5s with a quick fade
+  useEffect(() => {
+    if (posters.length <= 1) return;
+
+    const interval = setInterval(() => {
+      // fade out, swap, fade in
+      setPosterVisible(false);
+      setTimeout(() => {
+        setPosterIdx((i) => (i + 1) % posters.length);
+        setPosterVisible(true);
+      }, 250);
+    }, 5000);
+
+    return () => clearInterval(interval);
+  }, [posters]);
+
   useEffect(() => {
     load();
 
-    // Live updates
+    // Live updates via realtime
     const channel = supabase
       .channel(`display-${code}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "votes" }, async () => {
@@ -100,23 +117,23 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
           const s = await fetchSessionByCode(code);
           const c = await fetchVoteCounts(s.id);
           setCounts(c);
-        } catch {
-          // ignore transient errors
-        }
+        } catch {}
       })
       .subscribe();
 
-    // Also refresh data every 5 seconds (no full reload, no flicker)
-    const interval = setInterval(() => {
+    // Backup refresh every 5s (data only, no page reload)
+    const refresh = setInterval(() => {
       load();
     }, 5000);
 
     return () => {
       supabase.removeChannel(channel);
-      clearInterval(interval);
+      clearInterval(refresh);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
+
+  const currentPoster = posters.length ? `/posters/${posters[posterIdx]}` : null;
 
   return (
     <main className="h-screen overflow-hidden vote-bg text-white px-8 py-6">
@@ -135,21 +152,47 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
 
         {/* Body */}
         <div className="flex-1 grid grid-cols-12 gap-6 min-h-0">
-          {/* LEFT: QR */}
+          {/* LEFT: Posters + QR */}
           <div className="col-span-4 rounded-2xl bg-gold-inner p-6 flex flex-col min-h-0 items-center">
             <div className="text-gold text-2xl font-bold self-start">Vote now</div>
 
-            <div className="mt-6 bg-white rounded-xl p-5">
-              {voteUrl ? <QRCode value={voteUrl} size={240} /> : null}
+            {/* Poster slot */}
+            <div className="mt-4 w-full">
+              <div className="text-white/70 text-sm mb-2">Now Showing</div>
+
+              <div className="relative w-full rounded-xl overflow-hidden bg-black/40 border border-white/10 aspect-[2/3]">
+                {currentPoster ? (
+                  <Image
+                    src={currentPoster}
+                    alt="Movie poster"
+                    fill
+                    sizes="(max-width: 1024px) 30vw, 25vw"
+                    className={`object-cover transition-opacity duration-300 ${
+                      posterVisible ? "opacity-100" : "opacity-0"
+                    }`}
+                    priority={false}
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center text-white/60 text-sm px-4 text-center">
+                    Upload posters to <b className="mx-1">public/posters</b> and add{" "}
+                    <b className="mx-1">posters.json</b>
+                  </div>
+                )}
+              </div>
             </div>
 
-            <div className="mt-auto pt-4 text-white/70 text-sm">
+            {/* QR */}
+            <div className="mt-5 bg-white rounded-xl p-4">
+              {voteUrl ? <QRCode value={voteUrl} size={210} /> : null}
+            </div>
+
+            <div className="mt-auto pt-4 text-white/70 text-sm self-start">
               Total votes: <span className="text-white font-bold">{totalVotes}</span>
               {session?.is_open === false ? " • Voting closed" : ""}
             </div>
           </div>
 
-          {/* RIGHT: PIE */}
+          {/* RIGHT: Pie */}
           <div className="col-span-8 rounded-2xl bg-gold-inner p-6 flex flex-col min-h-0">
             <div className="flex items-center justify-between">
               <div className="text-gold text-2xl font-bold">Live Results</div>
@@ -164,7 +207,6 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
                     data={chartData}
                     outerRadius="82%"
                     innerRadius="45%"
-                    // ✅ no leader lines: we are not using built-in label with lines
                     label={renderSliceLabel}
                     labelLine={false}
                     stroke="rgba(0,0,0,0.35)"
@@ -174,11 +216,7 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
                       <Cell key={idx} fill={GOLD_COLORS[idx % GOLD_COLORS.length]} />
                     ))}
                   </Pie>
-
-                  {/* Tooltip still useful when you hover on a laptop */}
                   <Tooltip />
-
-                  {/* Legend is nice for TV so people know which slice is which */}
                   <Legend />
                 </PieChart>
               </ResponsiveContainer>
