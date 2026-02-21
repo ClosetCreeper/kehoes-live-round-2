@@ -7,9 +7,7 @@
 }
 
 .vote-bg {
-  background:
-    radial-gradient(1000px 600px at 50% 0%, rgba(90, 50, 40, 0.6), transparent 65%),
-    radial-gradient(900px 900px at 50% 60%, rgba(40, 15, 15, 0.9), rgba(10, 5, 5, 1));
+  background: #000;
 }
 
 .text-gold {
