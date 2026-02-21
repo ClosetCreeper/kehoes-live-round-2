@@ -11,11 +11,10 @@ import { PieChart, Pie, Tooltip, Legend, ResponsiveContainer, Cell } from "recha
 type OptionRow = { id: string; name: string; sort: number };
 type SessionRow = { id: string; code: string; title: string | null; is_open: boolean };
 
-// Gold palette (auto cycles if you have more options than colors)
+// Gold palette (auto cycles)
 const GOLD_COLORS = ["#E7C873", "#D4AF37", "#C5A028", "#B8961E", "#9F7F14", "#F0D98A"];
 
 function renderSliceLabel({ cx, cy, midAngle, innerRadius, outerRadius, value }: any) {
-  // Only show labels for non-zero slices
   if (!value || value <= 0) return null;
 
   const RADIAN = Math.PI / 180;
@@ -50,9 +49,9 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
   const voteUrl = origin ? `${origin}/vote/${encodeURIComponent(code)}` : "";
 
   // Posters
+  const posters = POSTERS;
   const [posterIdx, setPosterIdx] = useState(0);
   const [posterVisible, setPosterVisible] = useState(true);
-  const posters = POSTERS;
 
   const totalVotes = useMemo(() => {
     let t = 0;
@@ -78,16 +77,22 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
     setCounts(c);
   }
 
-  // Cycle posters every 5 seconds with fade
+  // ✅ Poster cycle every 5s: fade out -> switch while hidden -> fade in new poster
   useEffect(() => {
     if (!posters || posters.length <= 1) return;
 
     const interval = setInterval(() => {
       setPosterVisible(false);
+
+      // after fade-out completes, switch poster
       setTimeout(() => {
         setPosterIdx((i) => (i + 1) % posters.length);
+      }, 320);
+
+      // small extra delay to ensure the new src is mounted BEFORE fade-in
+      setTimeout(() => {
         setPosterVisible(true);
-      }, 250);
+      }, 380);
     }, 5000);
 
     return () => clearInterval(interval);
@@ -104,16 +109,11 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
           const s = await fetchSessionByCode(code);
           const c = await fetchVoteCounts(s.id);
           setCounts(c);
-        } catch {
-          // ignore transient errors
-        }
+        } catch {}
       })
       .subscribe();
 
-    // Backup refresh every 5s (data only, no page reload)
-    const refresh = setInterval(() => {
-      load();
-    }, 5000);
+    const refresh = setInterval(() => load(), 5000);
 
     return () => {
       supabase.removeChannel(channel);
@@ -127,8 +127,8 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
   return (
     <main className="h-screen overflow-hidden vote-bg text-white px-8 py-6">
       <div className="h-full max-w-6xl mx-auto flex flex-col">
-        {/* Header */}
-        <div className="flex justify-center items-center pb-4">
+        {/* Header: Logo centered + QR at top-right */}
+        <div className="relative flex items-center justify-center pb-4">
           <Image
             src="/title.png"
             alt="Kehoes Voting Title"
@@ -137,44 +137,54 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
             priority
             className="w-[min(900px,85vw)] h-auto max-h-[16vh] object-contain"
           />
+
+          {/* QR block */}
+          <div className="absolute right-0 top-1/2 -translate-y-1/2">
+            <div
+              className="rounded-xl p-2"
+              style={{
+                background: "white",
+                border: "2px solid rgba(212,175,55,0.95)",
+                boxShadow: "0 0 18px rgba(212,175,55,0.25)",
+              }}
+            >
+              {voteUrl ? (
+                <QRCode
+                  value={voteUrl}
+                  size={120}
+                  fgColor="#000000"
+                  bgColor="#FFFFFF"
+                />
+              ) : null}
+            </div>
+          </div>
         </div>
 
         {/* Body */}
         <div className="flex-1 grid grid-cols-12 gap-6 min-h-0">
-          {/* LEFT: Posters + QR */}
-          <div className="col-span-4 rounded-2xl bg-gold-inner p-6 flex flex-col min-h-0 items-center">
-            <div className="text-gold text-2xl font-bold self-start">Vote now</div>
-
-            {/* Poster slot */}
-            <div className="mt-4 w-full">
-              <div className="text-white/70 text-sm mb-2">Now Showing</div>
-
-              <div className="relative w-full rounded-xl overflow-hidden bg-black/40 border border-white/10 aspect-[2/3]">
-                {currentPoster ? (
-                  <Image
-                    src={currentPoster}
-                    alt="Movie poster"
-                    fill
-                    sizes="(max-width: 1024px) 30vw, 25vw"
-                    className={`object-cover transition-opacity duration-300 ${
-                      posterVisible ? "opacity-100" : "opacity-0"
-                    }`}
-                  />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center text-white/60 text-sm px-4 text-center">
-                    Add poster files to <b className="mx-1">public/posters</b> and list them in{" "}
-                    <b className="mx-1">lib/posters.ts</b>
-                  </div>
-                )}
-              </div>
+          {/* LEFT: Poster only */}
+          <div className="col-span-4 rounded-2xl bg-gold-inner p-6 flex flex-col min-h-0">
+            <div className="relative w-full rounded-xl overflow-hidden bg-black/40 border border-white/10 aspect-[2/3]">
+              {currentPoster ? (
+                <Image
+                  key={currentPoster} // ✅ forces Next/Image to swap cleanly
+                  src={currentPoster}
+                  alt="Movie poster"
+                  fill
+                  sizes="(max-width: 1024px) 30vw, 25vw"
+                  className={`object-cover transition-opacity duration-300 ${
+                    posterVisible ? "opacity-100" : "opacity-0"
+                  }`}
+                />
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center text-white/60 text-sm px-4 text-center">
+                  Add poster files to <b className="mx-1">public/posters</b> and list them in{" "}
+                  <b className="mx-1">lib/posters.ts</b>
+                </div>
+              )}
             </div>
 
-            {/* QR */}
-            <div className="mt-5 bg-white rounded-xl p-4">
-              {voteUrl ? <QRCode value={voteUrl} size={210} /> : null}
-            </div>
-
-            <div className="mt-auto pt-4 text-white/70 text-sm self-start">
+            <div className="mt-auto pt-4 text-white/70 text-sm">
               Total votes: <span className="text-white font-bold">{totalVotes}</span>
               {session?.is_open === false ? " • Voting closed" : ""}
             </div>
@@ -184,7 +194,6 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
           <div className="col-span-8 rounded-2xl bg-gold-inner p-6 flex flex-col min-h-0">
             <div className="flex items-center justify-between">
               <div className="text-gold text-2xl font-bold">Live Results</div>
-              <div className="text-white/60 text-sm">Auto refresh: 5s</div>
             </div>
 
             <div className="mt-4 flex-1 min-h-0">
