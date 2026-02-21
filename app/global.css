@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --gold: 215 184 120;
+}
+
+.vote-bg {
+  background:
+    radial-gradient(1000px 600px at 50% 0%, rgba(90, 50, 40, 0.6), transparent 65%),
+    radial-gradient(900px 900px at 50% 60%, rgba(40, 15, 15, 0.9), rgba(10, 5, 5, 1));
+}
+
+.text-gold {
+  color: rgb(var(--gold));
+}
+
+.bg-gold-card {
+  background: rgba(198, 170, 108, 0.95);
+}
+
+.bg-gold-inner {
+  background: rgba(215, 190, 130, 0.35);
+}
+
+.bg-light-card {
+  background: rgba(215, 190, 130, 0.35);
+}
+
+.bg-dark-card {
+  background: rgba(70, 55, 35, 0.95);
+}
