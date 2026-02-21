@@ -4,16 +4,18 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import { fetchOptions, fetchSessionByCode, fetchVoteCounts } from "@/lib/results";
+import { POSTERS } from "@/lib/posters";
 import QRCode from "qrcode.react";
 import { PieChart, Pie, Tooltip, Legend, ResponsiveContainer, Cell } from "recharts";
 
 type OptionRow = { id: string; name: string; sort: number };
 type SessionRow = { id: string; code: string; title: string | null; is_open: boolean };
 
-// Elegant gold palette (auto-cycles)
+// Gold palette (auto cycles if you have more options than colors)
 const GOLD_COLORS = ["#E7C873", "#D4AF37", "#C5A028", "#B8961E", "#9F7F14", "#F0D98A"];
 
 function renderSliceLabel({ cx, cy, midAngle, innerRadius, outerRadius, value }: any) {
+  // Only show labels for non-zero slices
   if (!value || value <= 0) return null;
 
   const RADIAN = Math.PI / 180;
@@ -42,15 +44,15 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
   const [options, setOptions] = useState<OptionRow[]>([]);
   const [counts, setCounts] = useState<Map<string, number>>(new Map());
 
-  // Poster rotation
-  const [posters, setPosters] = useState<string[]>([]);
-  const [posterIdx, setPosterIdx] = useState(0);
-  const [posterVisible, setPosterVisible] = useState(true);
-
-  // Bulletproof origin detection for Vercel
+  // QR origin (works on Vercel previews + prod)
   const [origin, setOrigin] = useState<string>("");
   useEffect(() => setOrigin(window.location.origin), []);
   const voteUrl = origin ? `${origin}/vote/${encodeURIComponent(code)}` : "";
+
+  // Posters
+  const [posterIdx, setPosterIdx] = useState(0);
+  const [posterVisible, setPosterVisible] = useState(true);
+  const posters = POSTERS;
 
   const totalVotes = useMemo(() => {
     let t = 0;
@@ -76,26 +78,11 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
     setCounts(c);
   }
 
-  // Load poster list from /public/posters/posters.json
+  // Cycle posters every 5 seconds with fade
   useEffect(() => {
-    (async () => {
-      try {
-        const res = await fetch("/posters/posters.json", { cache: "no-store" });
-        if (!res.ok) return;
-        const arr = (await res.json()) as string[];
-        if (Array.isArray(arr)) setPosters(arr.filter(Boolean));
-      } catch {
-        // If missing, just no posters. (You’ll add posters.json)
-      }
-    })();
-  }, []);
-
-  // Poster cycle every 5s with a quick fade
-  useEffect(() => {
-    if (posters.length <= 1) return;
+    if (!posters || posters.length <= 1) return;
 
     const interval = setInterval(() => {
-      // fade out, swap, fade in
       setPosterVisible(false);
       setTimeout(() => {
         setPosterIdx((i) => (i + 1) % posters.length);
@@ -106,10 +93,10 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
     return () => clearInterval(interval);
   }, [posters]);
 
+  // Load + realtime + backup refresh
   useEffect(() => {
     load();
 
-    // Live updates via realtime
     const channel = supabase
       .channel(`display-${code}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "votes" }, async () => {
@@ -117,7 +104,9 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
           const s = await fetchSessionByCode(code);
           const c = await fetchVoteCounts(s.id);
           setCounts(c);
-        } catch {}
+        } catch {
+          // ignore transient errors
+        }
       })
       .subscribe();
 
@@ -133,7 +122,7 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [code]);
 
-  const currentPoster = posters.length ? `/posters/${posters[posterIdx]}` : null;
+  const currentPoster = posters?.length ? `/posters/${posters[posterIdx]}` : null;
 
   return (
     <main className="h-screen overflow-hidden vote-bg text-white px-8 py-6">
@@ -170,12 +159,11 @@ export default function DisplayPage({ params }: { params: { code: string } }) {
                     className={`object-cover transition-opacity duration-300 ${
                       posterVisible ? "opacity-100" : "opacity-0"
                     }`}
-                    priority={false}
                   />
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center text-white/60 text-sm px-4 text-center">
-                    Upload posters to <b className="mx-1">public/posters</b> and add{" "}
-                    <b className="mx-1">posters.json</b>
+                    Add poster files to <b className="mx-1">public/posters</b> and list them in{" "}
+                    <b className="mx-1">lib/posters.ts</b>
                   </div>
                 )}
               </div>
